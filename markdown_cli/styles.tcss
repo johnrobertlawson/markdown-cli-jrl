@@ -1,0 +1,28 @@
+/* Styles for markdown-cli-jrl */
+
+Screen {
+    background: $surface;
+}
+
+Header {
+    dock: top;
+}
+
+Footer {
+    dock: bottom;
+}
+
+#main-container {
+    width: 100%;
+    height: 1fr;
+}
+
+#raw-pane {
+    border-right: solid $accent;
+}
+
+#view-pane {
+    border-left: solid $accent;
+}
+
+

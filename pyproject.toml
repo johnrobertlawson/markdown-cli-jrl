@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markdown-cli-jrl"
+version = "0.1.0"
+description = "Terminal-native markdown viewer and editor with pretty rendering, split panes, and live reload"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    { name = "John Lawson" },
+]
+dependencies = [
+    "textual>=0.47.0",
+    "rich>=13.0.0",
+    "click>=8.0.0",
+    "watchfiles>=0.21.0",
+]
+
+[project.scripts]
+mdview = "markdown_cli.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
