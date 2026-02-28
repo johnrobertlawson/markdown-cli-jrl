@@ -1,19 +1,23 @@
 # markdown-cli-jrl
 
-Terminal-native Markdown viewer/editor for SSH and local terminals (no GUI or browser required).
+Terminal-native Markdown viewer/editor for SSH and local terminals (no GUI/browser).
 
-## Install at a glance
+## TL;DR install
 
-- Available now (no clone):
-  `python3 -m pip install --user "git+https://github.com/johnrobertlawson/markdown-cli-jrl.git"`
-- After first PyPI publish:
-  `python3 -m pip install --user markdown-cli-jrl`
-- After conda-forge feedstock:
-  `conda install -c conda-forge markdown-cli-jrl`
+```bash
+# Works today (no clone)
+python3 -m pip install --user "git+https://github.com/johnrobertlawson/markdown-cli-jrl.git"
 
-If `mdview` is not found after a `--user` install, add `~/.local/bin` to your `PATH`.
+# After first PyPI release
+python3 -m pip install --user markdown-cli-jrl
 
-## Quick start
+# After conda-forge feedstock
+conda install -c conda-forge markdown-cli-jrl
+```
+
+If `mdview` is not found after `--user` install, add `~/.local/bin` to your `PATH`.
+
+## Run
 
 ```bash
 mdview README.md
@@ -22,9 +26,9 @@ mdview README.md --split
 mdview README.md --edit
 ```
 
-In-app keys: `q` quit, `v` view, `r` raw, `s` split, `e` edit, `?` help.
+Keys: `q` quit, `v` view, `r` raw, `s` split, `e` edit, `?` help.
 
-## Ubuntu server setup (clone + helper script)
+## Ubuntu server quick setup
 
 ```bash
 sudo apt update && sudo apt install -y git python3 python3-venv python3-pip
@@ -35,37 +39,13 @@ source .venv/bin/activate
 mdview README.md
 ```
 
-## Local development install
+## Maintainers
 
 ```bash
-pip install -e .
-pip install -e ".[dev]"
+git tag v0.1.1 && git push origin v0.1.1
 ```
 
-## What it does
-
-- View mode: pretty rendered Markdown
-- Raw mode: source with line numbers
-- Split mode: raw + rendered with live reload on file changes
-- Edit mode: opens `$EDITOR` with live preview
-
-## Maintainers: publish to PyPI
-
-1. In PyPI, configure Trusted Publishing for:
-   - owner: `johnrobertlawson`
-   - repo: `markdown-cli-jrl`
-   - workflow: `publish-pypi.yml`
-   - environment: `pypi`
-2. In GitHub, create environment `pypi`.
-3. Bump `version` in `pyproject.toml`.
-4. Tag and push:
-
-```bash
-git tag v0.1.1
-git push origin v0.1.1
-```
-
-This triggers `.github/workflows/publish-pypi.yml`.
+PyPI publish runs from `.github/workflows/publish-pypi.yml` on `v*` tags after Trusted Publishing is configured for `johnrobertlawson/markdown-cli-jrl` and environment `pypi`.
 
 ## Requirements
 
