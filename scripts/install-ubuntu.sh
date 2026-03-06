@@ -13,12 +13,16 @@ if ! python3 -m venv --help >/dev/null 2>&1; then
   exit 1
 fi
 
-python3 -m venv .venv
+if [[ ! -d .venv ]]; then
+  python3 -m venv .venv
+fi
+
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install --upgrade -e .
 
 echo
 echo "Install complete."
 echo "Activate the environment with: source .venv/bin/activate"
 echo "Then run: mdview README.md"
+echo "To update later: git pull --ff-only && source .venv/bin/activate && python -m pip install --upgrade -e ."

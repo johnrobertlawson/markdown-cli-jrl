@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from rich.syntax import Syntax
-from rich.text import Text
 
-from textual.widgets import Static, MarkdownViewer, Markdown
+from textual.widgets import Markdown, Static
 
 
 class MarkdownRendered(Static):
@@ -69,11 +68,14 @@ class StatusLine(Static):
     }
     """
 
-    def update_status(self, filename: str, mode: str) -> None:
+    def update_status(self, filename: str, mode: str, notice: str | None = None) -> None:
         mode_display = {
             "view": "👁  VIEW",
             "raw": "📄 RAW",
             "split": "📐 SPLIT",
             "edit": "✏️  EDIT",
         }
-        self.update(f" {filename}  │  {mode_display.get(mode, mode.upper())}")
+        text = f" {filename}  │  {mode_display.get(mode, mode.upper())}"
+        if notice:
+            text = f"{text}  │  {notice}"
+        self.update(text)

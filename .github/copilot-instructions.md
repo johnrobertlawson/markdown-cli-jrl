@@ -4,6 +4,8 @@
 
 - Install package (runtime): `pip install -e .`
 - Install package with dev tools: `pip install -e ".[dev]"`
+- Upgrade editable install: `python -m pip install --upgrade -e .`
+- Ubuntu repo update flow: `git pull --ff-only && source .venv/bin/activate && python -m pip install --upgrade -e .`
 - Run tests: `pytest`
 - Run a single test: `pytest path/to/test_file.py::test_name`
 - Lint: `ruff check .`

@@ -1,6 +1,5 @@
 """CLI entry point for markdown-cli-jrl."""
 
-import sys
 import click
 
 from markdown_cli.app import MarkdownViewerApp
