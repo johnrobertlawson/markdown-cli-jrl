@@ -42,7 +42,6 @@ class MarkdownViewerApp(App):
     """A terminal-native markdown viewer with multiple display modes."""
 
     CSS_PATH = "styles.tcss"
-    PAGE_OVERLAP_LINES = 8
     GG_TIMEOUT_SECONDS = 0.6
     UPDATE_CHECK_TIMEOUT_SECONDS = 2.5
     PACKAGE_NAME = "markdown-cli-jrl"
@@ -54,7 +53,8 @@ class MarkdownViewerApp(App):
         Binding("r", "switch_mode('raw')", "Raw"),
         Binding("s", "switch_mode('split')", "Split"),
         Binding("e", "edit", "Edit"),
-        Binding("j,down", "line_down", "Down"),
+        Binding("j,down", "line_down", "Line Down"),
+        Binding("k,up", "line_up", "Line Up"),
         Binding("pageup,ctrl+u", "page_up", "Page Up"),
         Binding("pagedown,ctrl+d", "page_down", "Page Down"),
         Binding("G", "jump_bottom", "Bottom"),
@@ -237,8 +237,10 @@ class MarkdownViewerApp(App):
             panes.append(view_pane)
         return panes
 
-    def _page_step(self, pane: MarkdownRaw | MarkdownRendered) -> int:
-        return max(1, pane.scrollable_content_region.height - self.PAGE_OVERLAP_LINES)
+    def action_line_up(self) -> None:
+        """Scroll the visible pane(s) up by one line."""
+        for pane in self._visible_panes():
+            pane.scroll_up(animate=False)
 
     def action_line_down(self) -> None:
         """Scroll the visible pane(s) down by one line."""
@@ -248,12 +250,12 @@ class MarkdownViewerApp(App):
     def action_page_up(self) -> None:
         """Scroll the visible pane(s) one page up."""
         for pane in self._visible_panes():
-            pane.scroll_relative(y=-self._page_step(pane), animate=False)
+            pane.scroll_page_up(animate=False)
 
     def action_page_down(self) -> None:
         """Scroll the visible pane(s) one page down."""
         for pane in self._visible_panes():
-            pane.scroll_relative(y=self._page_step(pane), animate=False)
+            pane.scroll_page_down(animate=False)
 
     def action_jump_top(self) -> None:
         """Jump to the top of visible pane(s)."""
@@ -317,6 +319,7 @@ class MarkdownViewerApp(App):
             "| r | Raw mode |\n"
             "| s | Split mode |\n"
             "| e | Open in $EDITOR |\n"
+            "| k / Up | Scroll up one line |\n"
             "| j / Down | Scroll down one line |\n"
             "| PgUp / Ctrl+U | Page up |\n"
             "| PgDn / Ctrl+D | Page down |\n"

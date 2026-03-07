@@ -27,7 +27,7 @@ mdview README.md --edit
 ```
 
 Keys: `q` quit, `v` view, `r` raw, `s` split, `e` edit, `PgUp`/`Ctrl+U` page up, `PgDn`/`Ctrl+D` page down, `?` help.
-Extra navigation: `j`/Down scrolls down one line, `gg` jumps to top, `G` jumps to bottom.
+Extra navigation: `j`/Down scrolls down one line, `k`/Up scrolls up one line, `gg` jumps to top, `G` jumps to bottom.
 Update shortcut: on startup, mdview performs a quick update check (best effort); if a newer version is available, press `!` to run an in-place `pip install --upgrade markdown-cli-jrl` and exit on success.
 
 ## Ubuntu server quick setup
@@ -69,7 +69,7 @@ PyPI publish runs from `.github/workflows/publish-pypi.yml` on `v*` tags after T
 
 ## Next TODOs
 
-- Dog-food v0.5.0 in daily SSH usage and tune colors + update UX behavior based on that run.
+- Dog-food v0.5.1 in daily SSH usage and tune colors + update UX behavior based on that run.
 
 ## Requirements
 
