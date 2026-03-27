@@ -21,13 +21,15 @@ If `mdview` is not found after `--user` install, add `~/.local/bin` to your `PAT
 
 ```bash
 mdview README.md
+mdview README.md pyproject.toml
 mdview README.md --raw
 mdview README.md --split
 mdview README.md --edit
 ```
 
-Keys: `q` quit, `v` view, `r` raw, `s` split, `e` edit, `PgUp`/`Ctrl+U` page up, `PgDn`/`Ctrl+D` page down, `?` help.
+Keys: `q` quit, `v` view, `r` raw, `s` split, `e` edit, `Right`/`l` next tab, `Left`/`h` previous tab, `x`/`d` discard current tab, `PgUp`/`Ctrl+U` page up, `PgDn`/`Ctrl+D` page down, `?` help.
 Extra navigation: `j`/Down scrolls down one line, `k`/Up scrolls up one line, `gg` jumps to top, `G` jumps to bottom.
+When many files are queued, the tab strip stays minimal and summarizes background tabs; with only a few files it shows more tab names directly.
 Update shortcut: on startup, mdview performs a quick update check (best effort); if a newer version is available, press `!` to run an in-place `pip install --upgrade markdown-cli-jrl` and exit on success.
 
 ## Ubuntu server quick setup

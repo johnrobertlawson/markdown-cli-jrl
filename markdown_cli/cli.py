@@ -1,12 +1,14 @@
 """CLI entry point for markdown-cli-jrl."""
 
+from typing import Tuple
+
 import click
 
 from markdown_cli.app import MarkdownViewerApp
 
 
 @click.command()
-@click.argument("file", type=click.Path(exists=True))
+@click.argument("files", nargs=-1, type=click.Path(exists=True))
 @click.option("--raw", is_flag=True, help="Show raw markdown with line numbers")
 @click.option("--split", "split_mode", is_flag=True, help="Side-by-side raw + rendered")
 @click.option("--edit", "edit_mode", is_flag=True, help="Open $EDITOR with live preview")
@@ -16,8 +18,12 @@ from markdown_cli.app import MarkdownViewerApp
     default="dark",
     help="Color theme",
 )
-def main(file: str, raw: bool, split_mode: bool, edit_mode: bool, theme: str) -> None:
+def main(
+    files: Tuple[str, ...], raw: bool, split_mode: bool, edit_mode: bool, theme: str
+) -> None:
     """View markdown files beautifully in the terminal."""
+    if not files:
+        raise click.UsageError("Provide at least one markdown file.")
     if raw:
         mode = "raw"
     elif split_mode:
@@ -27,7 +33,7 @@ def main(file: str, raw: bool, split_mode: bool, edit_mode: bool, theme: str) ->
     else:
         mode = "view"
 
-    app = MarkdownViewerApp(filepath=file, initial_mode=mode, theme_name=theme)
+    app = MarkdownViewerApp(filepaths=list(files), initial_mode=mode, theme_name=theme)
     app.run()
 
 

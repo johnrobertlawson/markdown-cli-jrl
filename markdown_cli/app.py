@@ -21,7 +21,7 @@ from textual.timer import Timer
 from textual.widgets import Footer, Header
 
 from markdown_cli import __version__
-from markdown_cli.widgets import MarkdownRendered, MarkdownRaw, StatusLine
+from markdown_cli.widgets import MarkdownRendered, MarkdownRaw, StatusLine, TabQueueLine
 
 
 def _version_numbers(version: str) -> tuple[int, ...]:
@@ -53,6 +53,9 @@ class MarkdownViewerApp(App):
         Binding("r", "switch_mode('raw')", "Raw"),
         Binding("s", "switch_mode('split')", "Split"),
         Binding("e", "edit", "Edit"),
+        Binding("right,l", "next_tab", "Next Tab"),
+        Binding("left,h", "previous_tab", "Prev Tab"),
+        Binding("x,d", "discard_tab", "Discard Tab"),
         Binding("j,down", "line_down", "Line Down"),
         Binding("k,up", "line_up", "Line Up"),
         Binding("pageup,ctrl+u", "page_up", "Page Up"),
@@ -66,12 +69,13 @@ class MarkdownViewerApp(App):
 
     def __init__(
         self,
-        filepath: str,
+        filepaths: list[str],
         initial_mode: str = "view",
         theme_name: str = "dark",
     ) -> None:
         super().__init__()
-        self.filepath = Path(filepath).resolve()
+        self.filepaths = [Path(filepath).resolve() for filepath in filepaths]
+        self.active_index = 0
         self.initial_mode = initial_mode
         self._theme_name = theme_name
         self._watcher_thread: Thread | None = None
@@ -84,12 +88,17 @@ class MarkdownViewerApp(App):
     def markdown_content(self) -> str:
         """Read the current file contents."""
         try:
-            return self.filepath.read_text(encoding="utf-8")
+            return self.active_filepath.read_text(encoding="utf-8")
         except Exception as e:
             return f"*Error reading file:* {e}"
 
+    @property
+    def active_filepath(self) -> Path:
+        return self.filepaths[self.active_index]
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
+        yield TabQueueLine(id="tabs")
         with Horizontal(id="main-container"):
             yield MarkdownRaw(id="raw-pane")
             yield MarkdownRendered(id="view-pane")
@@ -97,8 +106,9 @@ class MarkdownViewerApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.title = f"mdview — {self.filepath.name}"
+        self.title = f"mdview — {self.active_filepath.name}"
         self.mode_name = self.initial_mode
+        self._refresh_tabs()
         self._refresh_content()
         self._start_watcher()
         self._start_update_check()
@@ -125,6 +135,12 @@ class MarkdownViewerApp(App):
         content = self.markdown_content
         self.query_one("#raw-pane", MarkdownRaw).update_content(content)
         self.query_one("#view-pane", MarkdownRendered).update_content(content)
+        self._refresh_status()
+        self._refresh_tabs()
+
+    def _refresh_tabs(self) -> None:
+        tabs = self.query_one("#tabs", TabQueueLine)
+        tabs.update_tabs(self.filepaths, self.active_index)
 
     def _start_watcher(self) -> None:
         """Watch the file for changes in a background thread."""
@@ -134,7 +150,8 @@ class MarkdownViewerApp(App):
             try:
                 from watchfiles import watch
 
-                for _changes in watch(str(self.filepath)):
+                watch_paths = [str(path) for path in self.filepaths]
+                for _changes in watch(*watch_paths):
                     if not self._watching:
                         break
                     self.call_from_thread(self._refresh_content)
@@ -142,16 +159,18 @@ class MarkdownViewerApp(App):
                 # watchfiles not installed — fall back to polling
                 import time
 
-                last_mtime = self.filepath.stat().st_mtime
+                last_mtimes = {path: path.stat().st_mtime for path in self.filepaths}
                 while self._watching:
                     time.sleep(1)
-                    try:
-                        mtime = self.filepath.stat().st_mtime
-                        if mtime != last_mtime:
-                            last_mtime = mtime
+                    for path in list(last_mtimes):
+                        try:
+                            mtime = path.stat().st_mtime
+                        except FileNotFoundError:
                             self.call_from_thread(self._refresh_content)
-                    except FileNotFoundError:
-                        break
+                            continue
+                        if mtime != last_mtimes[path]:
+                            last_mtimes[path] = mtime
+                            self.call_from_thread(self._refresh_content)
 
         self._watcher_thread = Thread(target=_watch, daemon=True)
         self._watcher_thread.start()
@@ -200,7 +219,7 @@ class MarkdownViewerApp(App):
         update_note = None
         if self._update_available_version is not None:
             update_note = f"v{self._update_available_version} available (! to install)"
-        status.update_status(self.filepath.name, self.mode_name, update_note)
+        status.update_status(self.active_filepath.name, self.mode_name, update_note)
 
     def action_switch_mode(self, mode: str) -> None:
         self.mode_name = mode
@@ -303,10 +322,36 @@ class MarkdownViewerApp(App):
 
         def _run_editor() -> None:
             with self.suspend():
-                subprocess.run([editor, str(self.filepath)])
+                subprocess.run([editor, str(self.active_filepath)])
 
         # Run editor — file watcher will pick up changes
         self.call_later(_run_editor)
+
+    def _switch_to_tab(self, new_index: int) -> None:
+        self.active_index = new_index % len(self.filepaths)
+        self.title = f"mdview — {self.active_filepath.name}"
+        self._refresh_content()
+
+    def action_next_tab(self) -> None:
+        """Move to the next queued file tab."""
+        self._switch_to_tab(self.active_index + 1)
+
+    def action_previous_tab(self) -> None:
+        """Move to the previous queued file tab."""
+        self._switch_to_tab(self.active_index - 1)
+
+    def action_discard_tab(self) -> None:
+        """Discard current tab and move to the next one."""
+        if len(self.filepaths) == 1:
+            self.notify("Can't discard the last remaining tab.")
+            return
+        discarded = self.active_filepath.name
+        del self.filepaths[self.active_index]
+        if self.active_index >= len(self.filepaths):
+            self.active_index = 0
+        self.title = f"mdview — {self.active_filepath.name}"
+        self._refresh_content()
+        self.notify(f"Discarded tab: {discarded}")
 
     def action_help(self) -> None:
         """Toggle help overlay."""
@@ -319,6 +364,9 @@ class MarkdownViewerApp(App):
             "| r | Raw mode |\n"
             "| s | Split mode |\n"
             "| e | Open in $EDITOR |\n"
+            "| Right / l | Next tab |\n"
+            "| Left / h | Previous tab |\n"
+            "| x / d | Discard current tab |\n"
             "| k / Up | Scroll up one line |\n"
             "| j / Down | Scroll down one line |\n"
             "| PgUp / Ctrl+U | Page up |\n"

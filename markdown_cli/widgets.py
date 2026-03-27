@@ -2,9 +2,53 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from rich.syntax import Syntax
 
 from textual.widgets import Markdown, Static
+
+
+class TabQueueLine(Static):
+    """Minimal tab strip with condensed labels for queued files."""
+
+    DEFAULT_CSS = """
+    TabQueueLine {
+        width: 100%;
+        height: 1;
+        background: $panel;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
+
+    SMALL_TAB_THRESHOLD = 4
+
+    @staticmethod
+    def _truncate_label(label: str, max_length: int) -> str:
+        if len(label) <= max_length:
+            return label
+        return f"{label[: max_length - 1]}..."
+
+    def update_tabs(self, filepaths: list[Path], active_index: int) -> None:
+        count = len(filepaths)
+        position = f"{active_index + 1}/{count}"
+
+        if count <= self.SMALL_TAB_THRESHOLD:
+            labels: list[str] = []
+            for index, path in enumerate(filepaths):
+                short_label = self._truncate_label(path.name, 18)
+                if index == active_index:
+                    labels.append(f"<{short_label}>")
+                else:
+                    labels.append(short_label)
+            tabs_text = " | ".join(labels)
+        else:
+            active_name = self._truncate_label(filepaths[active_index].name, 24)
+            queued_count = count - 1
+            tabs_text = f"<{active_name}> | +{queued_count} queued"
+
+        self.update(f" tabs {position}  {tabs_text}")
 
 
 class MarkdownRendered(Static):
