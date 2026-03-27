@@ -46,6 +46,7 @@ class MarkdownViewerApp(App):
     UPDATE_CHECK_TIMEOUT_SECONDS = 2.5
     PACKAGE_NAME = "markdown-cli-jrl"
     UPDATE_CHECK_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
+    HELP_STATUS_NOTE = "HELP (?/Esc to close)"
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
@@ -63,6 +64,7 @@ class MarkdownViewerApp(App):
         Binding("G", "jump_bottom", "Bottom"),
         Binding("exclamation_mark", "install_update", "Install Update"),
         Binding("question_mark", "help", "Help"),
+        Binding("escape", "close_help", "Close Help"),
     ]
 
     mode_name: reactive[str] = reactive("view")
@@ -83,6 +85,8 @@ class MarkdownViewerApp(App):
         self._pending_g = False
         self._pending_g_timer: Timer | None = None
         self._update_available_version: str | None = None
+        self._help_active = False
+        self._help_restore_mode = initial_mode
 
     @property
     def markdown_content(self) -> str:
@@ -133,8 +137,11 @@ class MarkdownViewerApp(App):
     def _refresh_content(self) -> None:
         """Reload file and update both panes."""
         content = self.markdown_content
-        self.query_one("#raw-pane", MarkdownRaw).update_content(content)
-        self.query_one("#view-pane", MarkdownRendered).update_content(content)
+        raw_pane = self.query_one("#raw-pane", MarkdownRaw)
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        raw_pane.update_content(content)
+        if not self._help_active:
+            view_pane.update_content(content)
         self._refresh_status()
         self._refresh_tabs()
 
@@ -219,10 +226,17 @@ class MarkdownViewerApp(App):
         update_note = None
         if self._update_available_version is not None:
             update_note = f"v{self._update_available_version} available (! to install)"
+        if self._help_active:
+            if update_note is None:
+                update_note = self.HELP_STATUS_NOTE
+            else:
+                update_note = f"{self.HELP_STATUS_NOTE} | {update_note}"
         status.update_status(self.active_filepath.name, self.mode_name, update_note)
 
     def action_switch_mode(self, mode: str) -> None:
+        self._help_active = False
         self.mode_name = mode
+        self._refresh_content()
 
     def _clear_pending_g(self) -> None:
         self._pending_g = False
@@ -355,6 +369,11 @@ class MarkdownViewerApp(App):
 
     def action_help(self) -> None:
         """Toggle help overlay."""
+        if self._help_active:
+            self.action_close_help()
+            return
+        self._help_active = True
+        self._help_restore_mode = self.mode_name
         help_text = (
             "## Keybindings\n\n"
             "| Key | Action |\n"
@@ -374,13 +393,23 @@ class MarkdownViewerApp(App):
             "| gg | Jump to top |\n"
             "| G | Jump to bottom |\n"
             "| ! | Install available update |\n"
-            "| ? | This help |\n"
+            "| ? | Toggle help |\n"
+            "| Esc | Close help |\n"
         )
         view_pane = self.query_one("#view-pane", MarkdownRendered)
         view_pane.update_content(help_text)
         raw_pane = self.query_one("#raw-pane", MarkdownRaw)
         raw_pane.display = False
         view_pane.display = True
+        self._refresh_status()
+
+    def action_close_help(self) -> None:
+        """Close help and restore prior mode content."""
+        if not self._help_active:
+            return
+        self._help_active = False
+        self.mode_name = self._help_restore_mode
+        self._refresh_content()
 
     def on_unmount(self) -> None:
         self._watching = False
