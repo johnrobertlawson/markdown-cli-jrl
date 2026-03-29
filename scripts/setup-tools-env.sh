@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TOOLS_ENV_NAME="${TOOLS_ENV_NAME:-tools}"
+
+usage() {
+  cat <<EOF
+Usage: ./scripts/setup-tools-env.sh [--pull]
+
+Create or refresh the dedicated "${TOOLS_ENV_NAME}" conda environment for mdview,
+install this repo there in editable mode, and link mdview into ~/.local/bin so it
+works from any directory in new shells without activating the environment.
+
+Options:
+  --pull    Run "git pull --ff-only" in this repo before reinstalling
+  -h, --help
+EOF
+}
+
+find_conda_bin() {
+  if [[ -n "${CONDA_EXE:-}" && -x "${CONDA_EXE}" ]]; then
+    printf '%s\n' "${CONDA_EXE}"
+    return 0
+  fi
+
+  if command -v conda >/dev/null 2>&1; then
+    command -v conda
+    return 0
+  fi
+
+  for candidate in \
+    "$HOME/miniforge3/bin/conda" \
+    "$HOME/mambaforge/bin/conda" \
+    "/opt/homebrew/Caskroom/miniforge/base/bin/conda"
+  do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+pull_latest=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --pull)
+      pull_latest=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+CONDA_BIN="$(find_conda_bin)" || {
+  echo "Could not find conda. Install Miniforge or add conda to PATH." >&2
+  exit 1
+}
+
+SOLVER_BIN="$CONDA_BIN"
+if command -v mamba >/dev/null 2>&1; then
+  SOLVER_BIN="$(command -v mamba)"
+fi
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONDA_BASE="$("$CONDA_BIN" info --base)"
+TOOLS_PREFIX="$CONDA_BASE/envs/${TOOLS_ENV_NAME}"
+TOOLS_BIN="${TOOLS_PREFIX}/bin"
+LOCAL_BIN="${HOME}/.local/bin"
+
+if (( pull_latest )); then
+  git -C "$REPO_DIR" pull --ff-only
+fi
+
+if [[ ! -d "$TOOLS_PREFIX" ]]; then
+  "$SOLVER_BIN" create -y -n "$TOOLS_ENV_NAME" python=3.12 pip
+fi
+
+"$CONDA_BIN" run --no-capture-output -n "$TOOLS_ENV_NAME" python - <<'PY'
+import sys
+
+if sys.version_info < (3, 8):
+    raise SystemExit("The tools environment must use Python 3.8 or newer.")
+PY
+
+"$CONDA_BIN" run --no-capture-output -n "$TOOLS_ENV_NAME" python -m pip install --upgrade -e "$REPO_DIR"
+"$CONDA_BIN" run --no-capture-output -n "$TOOLS_ENV_NAME" python -m pip check
+
+if [[ ! -x "${TOOLS_BIN}/mdview" ]]; then
+  echo "mdview was not installed at ${TOOLS_BIN}/mdview" >&2
+  exit 1
+fi
+
+mkdir -p "$LOCAL_BIN"
+ln -sfn "${TOOLS_BIN}/mdview" "${LOCAL_BIN}/mdview"
+"${LOCAL_BIN}/mdview" --help >/dev/null
+
+echo
+echo "mdview is ready."
+echo "  env:    ${TOOLS_ENV_NAME}"
+echo "  binary: ${TOOLS_BIN}/mdview"
+echo "  shim:   ${LOCAL_BIN}/mdview"
+
+case ":$PATH:" in
+  *":${LOCAL_BIN}:"*)
+    echo "Run: mdview README.md"
+    ;;
+  *)
+    echo "Add ${LOCAL_BIN} to your PATH if mdview is not found in a new shell."
+    ;;
+esac
+
+echo "Re-run ./scripts/setup-tools-env.sh --pull to refresh after pulling the repo."

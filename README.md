@@ -17,6 +17,21 @@ conda install -c conda-forge markdown-cli-jrl
 
 If `mdview` is not found after `--user` install, add `~/.local/bin` to your `PATH`.
 
+## Recommended local clone setup (`tools` env)
+
+If you want `mdview` to work anywhere without installing into `base`, use the
+dedicated conda `tools` environment helper:
+
+```bash
+git clone https://github.com/johnrobertlawson/markdown-cli-jrl.git
+cd markdown-cli-jrl
+./scripts/setup-tools-env.sh --pull
+mdview README.md
+```
+
+This installs the repo into the `tools` env in editable mode and links
+`mdview` into `~/.local/bin`.
+
 ## Run
 
 ```bash
