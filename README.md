@@ -29,8 +29,8 @@ cd markdown-cli-jrl
 mdview README.md
 ```
 
-This installs the repo into the `tools` env in editable mode and links
-`mdview` into `~/.local/bin`.
+This installs the repo into the `tools` env in editable mode and writes a
+small `mdview` shim into `~/.local/bin`.
 
 ## Run
 
