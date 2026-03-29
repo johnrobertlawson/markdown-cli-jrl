@@ -49,9 +49,7 @@ If you installed from a clone with `.venv`:
 
 ```bash
 cd markdown-cli-jrl
-git pull --ff-only
-source .venv/bin/activate
-python -m pip install --upgrade -e .
+./scripts/update-ubuntu.sh
 ```
 
 If you installed with `--user`:

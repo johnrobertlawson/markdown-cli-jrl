@@ -25,4 +25,4 @@ echo
 echo "Install complete."
 echo "Activate the environment with: source .venv/bin/activate"
 echo "Then run: mdview README.md"
-echo "To update later: git pull --ff-only && source .venv/bin/activate && python -m pip install --upgrade -e ."
+echo "To update later: ./scripts/update-ubuntu.sh"
