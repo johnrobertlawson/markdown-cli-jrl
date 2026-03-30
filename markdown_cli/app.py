@@ -21,7 +21,13 @@ from textual.timer import Timer
 from textual.widgets import Footer, Header
 
 from markdown_cli import __version__
-from markdown_cli.widgets import MarkdownRendered, MarkdownRaw, StatusLine, TabQueueLine
+from markdown_cli.widgets import (
+    FileTOC,
+    MarkdownRendered,
+    MarkdownRaw,
+    StatusLine,
+    TabQueueLine,
+)
 
 
 def _version_numbers(version: str) -> tuple[int, ...]:
@@ -62,6 +68,9 @@ class MarkdownViewerApp(App):
         Binding("pageup,ctrl+u", "page_up", "Page Up"),
         Binding("pagedown,ctrl+d", "page_down", "Page Down"),
         Binding("G", "jump_bottom", "Bottom"),
+        Binding("t", "toggle_toc", "TOC"),
+        Binding("n", "toggle_nested", "Nested", show=False),
+        Binding("enter", "toc_select", "Select", show=False),
         Binding("exclamation_mark", "install_update", "Install Update"),
         Binding("question_mark", "help", "Help"),
         Binding("escape", "close_help", "Close Help"),
@@ -87,6 +96,7 @@ class MarkdownViewerApp(App):
         self._update_available_version: str | None = None
         self._help_active = False
         self._help_restore_mode = initial_mode
+        self._toc_active = False
 
     @property
     def markdown_content(self) -> str:
@@ -101,9 +111,11 @@ class MarkdownViewerApp(App):
         return self.filepaths[self.active_index]
 
     def compose(self) -> ComposeResult:
+        toc_root = self.filepaths[0].parent if self.filepaths else Path.cwd()
         yield Header(show_clock=True)
         yield TabQueueLine(id="tabs")
         with Horizontal(id="main-container"):
+            yield FileTOC(toc_root, id="file-toc")
             yield MarkdownRaw(id="raw-pane")
             yield MarkdownRendered(id="view-pane")
         yield StatusLine(id="status")
@@ -114,6 +126,7 @@ class MarkdownViewerApp(App):
         self.mode_name = self.initial_mode
         self._refresh_tabs()
         self._refresh_content()
+        self._refresh_toc()
         self._start_watcher()
         self._start_update_check()
 
@@ -144,10 +157,62 @@ class MarkdownViewerApp(App):
             view_pane.update_content(content)
         self._refresh_status()
         self._refresh_tabs()
+        self._refresh_toc()
 
     def _refresh_tabs(self) -> None:
         tabs = self.query_one("#tabs", TabQueueLine)
         tabs.update_tabs(self.filepaths, self.active_index)
+
+    def _refresh_toc(self) -> None:
+        toc = self.query_one("#file-toc", FileTOC)
+        toc.set_active_file(self.active_filepath)
+
+    def action_toggle_toc(self) -> None:
+        """Show or hide the file TOC sidebar."""
+        toc = self.query_one("#file-toc", FileTOC)
+        self._toc_active = not self._toc_active
+        toc.display = self._toc_active
+        if self._toc_active:
+            toc.scan()
+            toc.set_active_file(self.active_filepath)
+
+    def action_toggle_nested(self) -> None:
+        """Toggle flat/nested directory scan in the TOC."""
+        if not self._toc_active:
+            return
+        toc = self.query_one("#file-toc", FileTOC)
+        toc.toggle_nested()
+        mode_label = "nested" if toc.nested else "flat"
+        self.notify(f"TOC: {mode_label} scan")
+
+    def action_toc_select(self) -> None:
+        """Select the highlighted item in the TOC, or enter headings."""
+        if not self._toc_active:
+            return
+        toc = self.query_one("#file-toc", FileTOC)
+        if not toc._in_headings and toc.headings:
+            toc.enter_headings()
+        else:
+            toc.select()
+
+    def on_file_toc_file_selected(self, event: FileTOC.FileSelected) -> None:
+        """Open the selected file from the TOC sidebar."""
+        path = event.path.resolve()
+        # Add to queue if not already present
+        if path not in self.filepaths:
+            self.filepaths.append(path)
+        new_index = self.filepaths.index(path)
+        self._switch_to_tab(new_index)
+
+    def on_file_toc_heading_selected(self, event: FileTOC.HeadingSelected) -> None:
+        """Scroll the rendered pane to the selected heading."""
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        if view_pane._md_widget is not None:
+            try:
+                heading_widget = view_pane._md_widget.query_one(f"#{event.heading_id}")
+                heading_widget.scroll_visible(animate=False)
+            except Exception:
+                pass
 
     def _start_watcher(self) -> None:
         """Watch the file for changes in a background thread."""
@@ -271,12 +336,18 @@ class MarkdownViewerApp(App):
         return panes
 
     def action_line_up(self) -> None:
-        """Scroll the visible pane(s) up by one line."""
+        """Scroll visible pane(s) up, or navigate TOC if active."""
+        if self._toc_active:
+            self.query_one("#file-toc", FileTOC).cursor_up()
+            return
         for pane in self._visible_panes():
             pane.scroll_up(animate=False)
 
     def action_line_down(self) -> None:
-        """Scroll the visible pane(s) down by one line."""
+        """Scroll visible pane(s) down, or navigate TOC if active."""
+        if self._toc_active:
+            self.query_one("#file-toc", FileTOC).cursor_down()
+            return
         for pane in self._visible_panes():
             pane.scroll_down(animate=False)
 
@@ -386,8 +457,11 @@ class MarkdownViewerApp(App):
             "| Right / l | Next tab |\n"
             "| Left / h | Previous tab |\n"
             "| x / d | Discard current tab |\n"
-            "| k / Up | Scroll up one line |\n"
-            "| j / Down | Scroll down one line |\n"
+            "| t | Toggle file TOC sidebar |\n"
+            "| n | Toggle flat/nested scan |\n"
+            "| Enter | Select file or heading |\n"
+            "| k / Up | Scroll up (or TOC navigate) |\n"
+            "| j / Down | Scroll down (or TOC navigate) |\n"
             "| PgUp / Ctrl+U | Page up |\n"
             "| PgDn / Ctrl+D | Page down |\n"
             "| gg | Jump to top |\n"

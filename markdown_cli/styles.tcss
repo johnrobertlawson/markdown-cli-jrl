@@ -18,11 +18,35 @@ Footer {
 }
 
 #raw-pane {
-    border-right: solid $accent;
+    border-right: solid #4A148C;
 }
 
 #view-pane {
-    border-left: solid $accent;
+    border-left: solid #4A148C;
 }
 
+/* ── Iridescent pastel heading palette (dark theme) ── */
 
+MarkdownH1:dark {
+    color: #B388FF;
+}
+
+MarkdownH2:dark {
+    color: #82B1FF;
+}
+
+MarkdownH3:dark {
+    color: #80D8FF;
+}
+
+MarkdownH4:dark {
+    color: #EA80FC;
+}
+
+MarkdownH5:dark {
+    color: #CE93D8;
+}
+
+MarkdownH6:dark {
+    color: #F48FB1;
+}
