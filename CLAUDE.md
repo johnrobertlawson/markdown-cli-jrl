@@ -53,6 +53,16 @@ CLI entrypoint `mdview` is defined in `pyproject.toml` and points to `markdown_c
 - **FileTOC dual cursor**: `_in_headings` flag tracks whether the cursor is in the file list or the heading sub-list. `Enter` enters headings, `j`/`k` navigates, `Enter` again scrolls to the heading.
 - **Iridescent palette**: dark theme uses texview's pastel colors (`#B388FF` lavender, `#82B1FF` periwinkle, etc.) for headings, status bar, tab bar. Light theme falls back to Textual defaults.
 
+## Parallel development with texview
+
+`mdview` (this repo) and `texview` (`../texview/`) are sibling CLI viewers sharing the same Textual+Rich foundation, iridescent pastel palette, and keyboard conventions. Features and aesthetics are intentionally mirrored:
+
+- **Shared shortcuts**: `t` file TOC, `n` nested toggle, `j`/`k` navigation, `gg`/`G`, `v`/`r`/`s`/`e` modes, `?` help, `q` quit.
+- **Shared palette**: `#B388FF` lavender through `#7986CB` indigo, `#4A148C` borders, `#1A0033` status bars.
+- **Shared widget patterns**: `FileTOC`, `StatusLine`, iridescent cycling in list rendering.
+
+When adding features or changing keybindings in one repo, check whether the sibling should get the same change for consistency.
+
 ## Publishing
 
 Version lives in `markdown_cli/__init__.py`. Tag with `v{VERSION}` and push; `.github/workflows/publish-pypi.yml` publishes to PyPI via trusted publishing.
