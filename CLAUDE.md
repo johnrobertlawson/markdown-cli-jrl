@@ -1,68 +1,52 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Dense notes for Claude Code. Optimized for AI reader, not humans.
 
-## Commands
+## Install flows — two supported, pick by host
 
-```bash
-pip install -e .                # Install (runtime)
-pip install -e ".[dev]"         # Install with dev tools (pytest, ruff)
-mdview README.md                # Run (also: --raw, --split, --edit, --theme light)
-pytest                          # Run all tests
-pytest path/to/test.py::name    # Run a single test
-ruff check .                    # Lint
-```
+- **venv flow** (`scripts/install-ubuntu.sh`) — `.venv/` + `pip install -e .`. Update: `git pull --ff-only && source .venv/bin/activate && pip install --upgrade -e .`.
+- **conda `tools` flow** (`scripts/setup-tools-env.sh`) — creates conda env `tools`, pip-installs editable, writes `~/.local/bin/mdview` shim that invokes `~/miniforge3/envs/tools/bin/python -I -m markdown_cli.cli`. Update: `./scripts/setup-tools-env.sh --pull`. No env activation needed at call time.
 
-Ubuntu clone update flow: `git pull --ff-only && source .venv/bin/activate && python -m pip install --upgrade -e .`
+Dev extras: `pip install -e ".[dev]"` → pytest + ruff. Run: `pytest`, `ruff check .`.
+
+## Install gotchas (encountered, keep)
+
+- **Half-formed `.venv` on fresh Ubuntu**: without `python3-venv`+`python3-pip` apt packages, `python3 -m venv .venv` still writes `pyvenv.cfg` and python symlinks but no `pip` / `activate`. Looks installed, isn't. Delete and retry after `sudo apt install python3-venv python3-pip`, or switch to conda flow.
+- **`setup-tools-env.sh:99` bug — `validate_runtime_deps` counts extras as runtime deps.** It splits `Requires-Dist` on `;` but doesn't check for `extra == "..."`, so `[dev]` deps (`pytest`, `ruff`) are flagged missing. `set -euo pipefail` aborts before the shim step. Workarounds: (a) install `[dev]` first so validation sees them present, (b) proper fix: skip requirements whose marker contains `extra ==`.
+- **Conda discovery** in `setup-tools-env.sh`: `$CONDA_EXE` → PATH → hardcoded `$HOME/miniforge3` / `$HOME/mambaforge` / homebrew path. System-wide `/opt/miniforge3` is NOT found. Per-user miniforge is the intended install.
+- **`conda run` output masks `set -e` exits** — validation failure showed as `ERROR conda.cli.main_run:execute`; real cause was the python heredoc raising.
 
 ## Architecture
 
-CLI entrypoint `mdview` is defined in `pyproject.toml` and points to `markdown_cli.cli:main`.
+CLI entrypoint `mdview` → `markdown_cli.cli:main` (see `pyproject.toml`).
 
-**`cli.py`** — Click command that parses flags (`--raw`, `--split`, `--edit`, `--theme`), resolves one initial mode, and launches `MarkdownViewerApp`.
+- **`cli.py`** — Click parser (`--raw`, `--split`, `--edit`, `--theme`), resolves one initial mode, launches `MarkdownViewerApp`. Mode precedence: `raw` > `split` > `edit` > `view`.
+- **`app.py`** — Textual app. Layout: `Header`, `TabQueueLine`, raw pane + rendered pane in `Horizontal`, `StatusLine`, `Footer`. Central reactive: `mode_name`; `watch_mode_name` controls pane visibility + status. `_refresh_content()` syncs both panes from disk. `watchfiles.watch` daemon thread drives live reload (polling fallback on `ImportError`).
+- **`widgets.py`** — `SmartTableContent`/`SmartTable`/`SmartMarkdown`: fr-based column sizing by per-column content volume (replaces Textual auto-sizing). `MarkdownRendered` wraps `SmartMarkdown`. `MarkdownRaw`: Rich `Syntax(..., "markdown", line_numbers=True)`. `StatusLine`, `TabQueueLine` (auto-summarizes when many files), `FileTOC` (sidebar, flat/nested toggle, dual-cursor via `_in_headings`).
+- **`styles.tcss`** — Textual CSS.
 
-**`app.py`** — Textual app orchestrator. Composes layout: `Header`, `TabQueueLine`, raw pane + rendered pane in a `Horizontal`, `StatusLine`, `Footer`. Central reactive state is `mode_name`; the `watch_mode_name` callback controls pane visibility and status updates. `_refresh_content()` reads markdown from disk and synchronizes both panes. A background file watcher keeps content live.
+## Invariants — don't break
 
-**`widgets.py`** — Custom widgets:
-- `SmartTableContent` / `SmartTable` / `SmartMarkdown` — override Textual's table rendering with content-proportional column widths (fr-based sizing by total content volume per column).
-- `MarkdownRendered` — wraps `SmartMarkdown` for pretty rendering with improved tables.
-- `MarkdownRaw` — uses Rich `Syntax(..., "markdown", line_numbers=True)` for source view.
-- `StatusLine` — shows current file, mode, and update notices.
-- `TabQueueLine` — tab strip that auto-summarizes when many files are queued.
-- `FileTOC` — left sidebar listing `.md` files in the working directory with in-file heading navigation. Supports flat/nested scan toggle.
-
-**`styles.tcss`** — Textual CSS for layout/border styling.
-
-## Key conventions
-
-- **Mode precedence** in CLI: `raw` > `split` > `edit` > `view` (default).
-- **Pane IDs are stable**: `#raw-pane`, `#view-pane`, `#status`, `#file-toc`, `#tabs`. App queries widgets by these IDs.
-- **All mode changes** flow through the `mode_name` reactive + `watch_mode_name`. Do not toggle widget visibility ad-hoc.
-- **All content refresh** goes through `_refresh_content()` to keep raw and rendered panes synchronized.
-- **Live reload** uses `watchfiles.watch` with a polling fallback on `ImportError`. File watcher runs in a daemon thread.
-- **TUI suspend pattern**: `action_edit` and the upgrade action use `self.suspend()` so the terminal is cleanly handed to `$EDITOR` or `pip`.
+- Mode changes flow through `mode_name` reactive → `watch_mode_name`. No ad-hoc visibility toggles.
+- Content refresh goes through `_refresh_content()`; both panes stay in sync.
+- Pane IDs stable: `#raw-pane`, `#view-pane`, `#status`, `#file-toc`, `#tabs`.
+- `action_edit` and upgrade action use `self.suspend()` before handing terminal to `$EDITOR` / `pip`.
 
 ## Non-obvious patterns
 
-- **Vim "gg"**: `_pending_g` flag + timer (`GG_TIMEOUT_SECONDS = 0.6`). First `g` sets the flag; second within timeout jumps to top. Handled in `on_key()` before normal bindings.
-- **Help overlay**: help is rendered markdown shown in the view pane. `_help_restore_mode` saves the mode before showing help; pressing `?`/`Esc` restores it.
-- **Tab wrapping**: `active_index % len(filepaths)` for circular navigation. Discarding the last tab is prevented.
-- **Scroll sync**: scroll actions operate on `_visible_panes()` so both panes scroll together in split mode.
-- **Update check**: background thread queries PyPI JSON API at startup; `_is_newer_version()` compares semver tuples. Network errors are silently caught.
-- **Smart tables**: `SmartTableContent` overrides `on_mount` to compute content volume per column and set `grid_columns` to fr-based scalars, replacing Textual's default auto-sizing.
-- **FileTOC dual cursor**: `_in_headings` flag tracks whether the cursor is in the file list or the heading sub-list. `Enter` enters headings, `j`/`k` navigates, `Enter` again scrolls to the heading.
-- **Iridescent palette**: dark theme uses texview's pastel colors (`#B388FF` lavender, `#82B1FF` periwinkle, etc.) for headings, status bar, tab bar. Light theme falls back to Textual defaults.
+- **Vim `gg`**: `_pending_g` + `GG_TIMEOUT_SECONDS = 0.6`, handled in `on_key()` before bindings.
+- **Help overlay**: rendered markdown in view pane. `_help_restore_mode` saves mode; `?`/`Esc` restores.
+- **Tab wrapping**: `active_index % len(filepaths)`. Cannot discard last tab.
+- **Scroll sync**: `_visible_panes()` drives scroll actions so split mode scrolls together.
+- **Update check**: background thread hits PyPI JSON at startup; `_is_newer_version()` compares semver tuples; network errors swallowed.
+- **Smart tables**: `SmartTableContent.on_mount` computes per-column content volume → fr-based `grid_columns`.
+- **FileTOC dual cursor**: `_in_headings` tracks whether cursor is in file list or heading sub-list. `Enter` enters / scrolls to heading; `j`/`k` navigates.
+- **Iridescent palette (dark only)**: `#B388FF` lavender, `#82B1FF` periwinkle, `#7986CB` indigo, `#4A148C` borders, `#1A0033` status bars. Light theme uses Textual defaults.
 
-## Parallel development with texview
+## Sibling repo: texview (`../texview/`)
 
-`mdview` (this repo) and `texview` (`../texview/`) are sibling CLI viewers sharing the same Textual+Rich foundation, iridescent pastel palette, and keyboard conventions. Features and aesthetics are intentionally mirrored:
-
-- **Shared shortcuts**: `t` file TOC, `n` nested toggle, `j`/`k` navigation, `gg`/`G`, `v`/`r`/`s`/`e` modes, `?` help, `q` quit.
-- **Shared palette**: `#B388FF` lavender through `#7986CB` indigo, `#4A148C` borders, `#1A0033` status bars.
-- **Shared widget patterns**: `FileTOC`, `StatusLine`, iridescent cycling in list rendering.
-
-When adding features or changing keybindings in one repo, check whether the sibling should get the same change for consistency.
+Shares Textual+Rich foundation, iridescent palette, keybindings (`t`/`n`/`j`/`k`/`gg`/`G`/`v`/`r`/`s`/`e`/`?`/`q`), and widget patterns (`FileTOC`, `StatusLine`). When changing shortcuts or aesthetics here, check if texview needs the same change.
 
 ## Publishing
 
-Version lives in `markdown_cli/__init__.py`. Tag with `v{VERSION}` and push; `.github/workflows/publish-pypi.yml` publishes to PyPI via trusted publishing.
+Version: `markdown_cli/__init__.py`. Tag `v{VERSION}` + push → `.github/workflows/publish-pypi.yml` publishes via PyPI trusted publishing.
