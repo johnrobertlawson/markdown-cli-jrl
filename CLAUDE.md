@@ -21,7 +21,7 @@ Dev extras: `pip install -e ".[dev]"` → pytest + ruff. Run: `pytest`, `ruff ch
 CLI entrypoint `mdview` → `markdown_cli.cli:main` (see `pyproject.toml`).
 
 - **`cli.py`** — Click parser (`--raw`, `--split`, `--edit`, `--theme`), resolves one initial mode, launches `MarkdownViewerApp`. Mode precedence: `raw` > `split` > `edit` > `view`.
-- **`app.py`** — Textual app. Layout: `Header`, `TabQueueLine`, raw pane + rendered pane in `Horizontal`, `StatusLine`, `Footer`. Central reactive: `mode_name`; `watch_mode_name` controls pane visibility + status. `_refresh_content()` syncs both panes from disk. `watchfiles.watch` daemon thread drives live reload (polling fallback on `ImportError`).
+- **`app.py`** — Textual app. Layout: `Header`, `TabQueueLine`, raw pane + rendered pane in `Horizontal`, `StatusLine`, `Footer`. Central reactive: `mode_name`; `watch_mode_name` controls pane visibility + status. `_refresh_content()` syncs both panes from disk. `watchfiles.watch` daemon thread drives live reload (polling fallback on `ImportError`); shutdown uses `stop_event=self._watch_stop` — without it the Rust thread parks in a syscall during teardown and glibc aborts with `FATAL: exception not rethrown` on `q`.
 - **`widgets.py`** — `SmartTableContent`/`SmartTable`/`SmartMarkdown`: fr-based column sizing by per-column content volume (replaces Textual auto-sizing). `MarkdownRendered` wraps `SmartMarkdown`. `MarkdownRaw`: Rich `Syntax(..., "markdown", line_numbers=True)`. `StatusLine`, `TabQueueLine` (auto-summarizes when many files), `FileTOC` (sidebar, flat/nested toggle, dual-cursor via `_in_headings`).
 - **`styles.tcss`** — Textual CSS.
 

@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -91,6 +91,7 @@ class MarkdownViewerApp(App):
         self._theme_name = theme_name
         self._watcher_thread: Thread | None = None
         self._watching = False
+        self._watch_stop = Event()
         self._pending_g = False
         self._pending_g_timer: Timer | None = None
         self._update_available_version: str | None = None
@@ -223,7 +224,7 @@ class MarkdownViewerApp(App):
                 from watchfiles import watch
 
                 watch_paths = [str(path) for path in self.filepaths]
-                for _changes in watch(*watch_paths):
+                for _changes in watch(*watch_paths, stop_event=self._watch_stop):
                     if not self._watching:
                         break
                     self.call_from_thread(self._refresh_content)
@@ -487,5 +488,6 @@ class MarkdownViewerApp(App):
 
     def on_unmount(self) -> None:
         self._watching = False
+        self._watch_stop.set()
         if self._pending_g_timer is not None:
             self._pending_g_timer.stop()
