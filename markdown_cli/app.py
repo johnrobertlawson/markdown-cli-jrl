@@ -59,21 +59,23 @@ class MarkdownViewerApp(App):
         Binding("v", "switch_mode('view')", "View"),
         Binding("r", "switch_mode('raw')", "Raw"),
         Binding("s", "switch_mode('split')", "Split"),
-        Binding("e", "edit", "Edit"),
+        Binding("i", "inline_edit", "Edit"),
+        Binding("e", "edit", "Vim", show=False),
+        Binding("ctrl+s", "save", "Save", show=False, priority=True),
         Binding("right,l", "next_tab", "Next Tab"),
         Binding("left,h", "previous_tab", "Prev Tab"),
         Binding("x,d", "discard_tab", "Discard Tab"),
         Binding("j,down", "line_down", "Line Down"),
         Binding("k,up", "line_up", "Line Up"),
         Binding("pageup,ctrl+u", "page_up", "Page Up"),
-        Binding("pagedown,ctrl+d", "page_down", "Page Down"),
+        Binding("pagedown,ctrl+d,space", "page_down", "Page Down"),
         Binding("G", "jump_bottom", "Bottom"),
         Binding("t", "toggle_toc", "TOC"),
         Binding("n", "toggle_nested", "Nested", show=False),
         Binding("enter", "toc_select", "Select", show=False),
         Binding("exclamation_mark", "install_update", "Install Update"),
         Binding("question_mark", "help", "Help"),
-        Binding("escape", "close_help", "Close Help"),
+        Binding("escape", "escape", "Back", priority=True),
     ]
 
     mode_name: reactive[str] = reactive("view")
@@ -150,9 +152,15 @@ class MarkdownViewerApp(App):
 
     def _refresh_content(self) -> None:
         """Reload file and update both panes."""
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        # Don't clobber an in-flight inline edit (file watcher fires on save too)
+        if view_pane.editing:
+            self._refresh_status()
+            self._refresh_tabs()
+            self._refresh_toc()
+            return
         content = self.markdown_content
         raw_pane = self.query_one("#raw-pane", MarkdownRaw)
-        view_pane = self.query_one("#view-pane", MarkdownRendered)
         raw_pane.update_content(content)
         if not self._help_active:
             view_pane.update_content(content)
@@ -413,7 +421,63 @@ class MarkdownViewerApp(App):
         # Run editor — file watcher will pick up changes
         self.call_later(_run_editor)
 
+    # ── Inline edit (in rendered pane) ────────────────────
+
+    def action_inline_edit(self) -> None:
+        """Toggle the in-pane TextArea editor over the rendered preview."""
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        if view_pane.editing:
+            self._exit_inline_edit(save=True)
+            return
+        # Make sure the rendered pane is visible
+        if self.mode_name not in ("view", "split"):
+            self.mode_name = "view"
+            self._refresh_content()
+        view_pane.begin_inline_edit(self.active_filepath)
+        self._refresh_status()
+
+    def _exit_inline_edit(self, save: bool = True) -> None:
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        if not view_pane.editing:
+            return
+        saved, text = view_pane.end_inline_edit(save=save)
+        # Re-render rendered pane and raw pane from current text
+        view_pane.update_content(text)
+        raw_pane = self.query_one("#raw-pane", MarkdownRaw)
+        raw_pane.update_content(text)
+        self._refresh_status()
+
+    def action_save(self) -> None:
+        """Save inline-edit buffer without exiting."""
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        if view_pane.editing:
+            if view_pane.save_inline():
+                self.notify("Saved ✓", timeout=1.5)
+            self._refresh_status()
+
+    def action_escape(self) -> None:
+        """Exit inline edit, then fall back to closing help."""
+        view_pane = self.query_one("#view-pane", MarkdownRendered)
+        if view_pane.editing:
+            self._exit_inline_edit(save=True)
+            return
+        if self._help_active:
+            self.action_close_help()
+
+    def on_markdown_rendered_inline_saved(
+        self, event: MarkdownRendered.InlineSaved
+    ) -> None:
+        # Watcher will also fire on disk write; refresh status here for the dirty flag
+        self._refresh_status()
+
     def _switch_to_tab(self, new_index: int) -> None:
+        # Save & exit any inline edit before switching files
+        try:
+            view_pane = self.query_one("#view-pane", MarkdownRendered)
+            if view_pane.editing:
+                self._exit_inline_edit(save=True)
+        except Exception:
+            pass
         self.active_index = new_index % len(self.filepaths)
         self.title = f"mdview — {self.active_filepath.name}"
         self._refresh_content()
@@ -454,6 +518,8 @@ class MarkdownViewerApp(App):
             "| v | View mode |\n"
             "| r | Raw mode |\n"
             "| s | Split mode |\n"
+            "| i | Inline edit in rendered pane |\n"
+            "| Ctrl+S | Save inline edit |\n"
             "| e | Open in $EDITOR |\n"
             "| Right / l | Next tab |\n"
             "| Left / h | Previous tab |\n"
@@ -463,13 +529,13 @@ class MarkdownViewerApp(App):
             "| Enter | Select file or heading |\n"
             "| k / Up | Scroll up (or TOC navigate) |\n"
             "| j / Down | Scroll down (or TOC navigate) |\n"
+            "| Space / PgDn / Ctrl+D | Page down |\n"
             "| PgUp / Ctrl+U | Page up |\n"
-            "| PgDn / Ctrl+D | Page down |\n"
             "| gg | Jump to top |\n"
             "| G | Jump to bottom |\n"
             "| ! | Install available update |\n"
             "| ? | Toggle help |\n"
-            "| Esc | Close help |\n"
+            "| Esc | Exit edit / close help |\n"
         )
         view_pane = self.query_one("#view-pane", MarkdownRendered)
         view_pane.update_content(help_text)

@@ -11,7 +11,7 @@ from textual.css.scalar import Scalar, Unit
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import Markdown, Static
+from textual.widgets import Markdown, Static, TextArea
 from textual.widgets._markdown import (
     MarkdownTable,
     MarkdownTableContent,
@@ -106,7 +106,11 @@ class SmartMarkdown(Markdown):
 
 
 class MarkdownRendered(Static):
-    """Pretty-rendered markdown pane using Textual's Markdown widget."""
+    """Pretty-rendered markdown pane using Textual's Markdown widget.
+
+    Hosts an inline-edit TextArea that swaps in over the rendered Markdown
+    when the user presses `i`. Mirrors texview's TexPreview inline editor.
+    """
 
     DEFAULT_CSS = """
     MarkdownRendered {
@@ -115,19 +119,93 @@ class MarkdownRendered(Static):
         overflow-y: auto;
         padding: 1 2;
     }
+    MarkdownRendered TextArea {
+        width: 1fr;
+        height: 1fr;
+    }
     """
+
+    class InlineSaved(Message):
+        def __init__(self, path: Path, content: str) -> None:
+            super().__init__()
+            self.path = path
+            self.content = content
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._md_widget: SmartMarkdown | None = None
+        self._editor: TextArea | None = None
+        self._edit_path: Path | None = None
+        self._edit_original: str = ""
+        self.editing: bool = False
 
     def on_mount(self) -> None:
         self._md_widget = SmartMarkdown("")
         self.mount(self._md_widget)
+        ta = TextArea(
+            "",
+            show_line_numbers=True,
+            soft_wrap=True,
+            tab_behavior="indent",
+            id="inline-md-editor",
+        )
+        ta.display = False
+        ta.can_focus = False  # don't steal focus while hidden
+        self.mount(ta)
+        self._editor = ta
 
     def update_content(self, content: str) -> None:
         if self._md_widget is not None:
             self._md_widget.update(content)
+
+    def begin_inline_edit(self, path: Path) -> None:
+        if self._editor is None or self._md_widget is None:
+            return
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return
+        self._edit_path = path
+        self._edit_original = text
+        self._editor.load_text(text)
+        self._md_widget.display = False
+        self._editor.display = True
+        self._editor.can_focus = True
+        self.editing = True
+        self._editor.focus()
+
+    def end_inline_edit(self, save: bool = True) -> tuple[bool, str]:
+        if self._editor is None or self._md_widget is None or not self.editing:
+            return False, ""
+        text = self._editor.text
+        saved = False
+        if save and self._edit_path is not None and text != self._edit_original:
+            self._edit_path.write_text(text, encoding="utf-8")
+            self.post_message(self.InlineSaved(self._edit_path, text))
+            self._edit_original = text
+            saved = True
+        self._editor.display = False
+        self._editor.can_focus = False
+        self._md_widget.display = True
+        self.editing = False
+        return saved, text
+
+    def save_inline(self) -> bool:
+        if self._editor is None or not self.editing or self._edit_path is None:
+            return False
+        text = self._editor.text
+        if text == self._edit_original:
+            return False
+        self._edit_path.write_text(text, encoding="utf-8")
+        self._edit_original = text
+        self.post_message(self.InlineSaved(self._edit_path, text))
+        return True
+
+    @property
+    def inline_dirty(self) -> bool:
+        if not self.editing or self._editor is None:
+            return False
+        return self._editor.text != self._edit_original
 
 
 class MarkdownRaw(Static):
