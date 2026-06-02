@@ -74,18 +74,26 @@ class SmartTableContent(MarkdownTableContent):
         num_cols = len(self.headers)
         if num_cols == 0:
             return
-        # Compute total content volume per column
-        volumes: list[int] = []
+        # Use the widest cell in each column (header or any row) as the weight.
+        # This reflects actual display need rather than total row-volume, so a
+        # column with many short entries doesn't shrink columns that have a few
+        # wide ones.
+        max_widths: list[float] = []
         for col in range(num_cols):
-            total = len(self.headers[col].plain)
+            col_max = len(self.headers[col].plain)
             for row in self.rows:
                 if col < len(row):
-                    total += len(row[col].plain)
-            volumes.append(max(total, 1))
-        max_vol = max(volumes)
-        weights = [max(1, round(v / max_vol * 10)) for v in volumes]
+                    col_max = max(col_max, len(row[col].plain))
+            max_widths.append(float(max(col_max, 1)))
+
+        # Floor: each column gets at least half of an equal share, so no column
+        # is squeezed to invisibility when one column has unusually wide cells.
+        equal_share = sum(max_widths) / num_cols
+        floor = max(1.0, equal_share * 0.5)
+        weights = [max(floor, w) for w in max_widths]
+
         self.styles.grid_columns = tuple(
-            Scalar(float(w), Unit.FRACTION, Unit.WIDTH) for w in weights
+            Scalar(w, Unit.FRACTION, Unit.WIDTH) for w in weights
         )
 
 
